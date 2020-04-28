@@ -2,13 +2,19 @@
 import atexit
 import time
 
-import RPi.GPIO as GPIO
+import board
+import busio
+from adafruit_mcp230xx.mcp23017 import MCP23017
 
 
-__version__ = '0.1.2'
+__version__ = '0.1.2+pipuck'
 
-DAT = 23
-CLK = 24
+# Set up MCP23017
+i2c = busio.I2C(board.SCL, board.SDA)
+mcp = MCP23017(i2c, address=0x21)
+
+DAT = mcp.get_pin(5)
+CLK = mcp.get_pin(6)
 NUM_PIXELS = 8
 BRIGHTNESS = 7
 
@@ -24,7 +30,6 @@ def _exit():
     if _clear_on_exit:
         clear()
         show()
-    GPIO.cleanup()
 
 
 def set_brightness(brightness):
@@ -48,31 +53,31 @@ def clear():
 
 def _write_byte(byte):
     for x in range(8):
-        GPIO.output(DAT, byte & 0b10000000)
-        GPIO.output(CLK, 1)
+        DAT.value = byte & 0b10000000
+        CLK.value = True
         time.sleep(sleep_time)
         byte <<= 1
-        GPIO.output(CLK, 0)
+        CLK.value = False
         time.sleep(sleep_time)
 
 
 # Emit exactly enough clock pulses to latch the small dark die APA102s which are weird
 # for some reason it takes 36 clocks, the other IC takes just 4 (number of pixels/2)
 def _eof():
-    GPIO.output(DAT, 0)
+    DAT.value = False
     for x in range(36):
-        GPIO.output(CLK, 1)
+        CLK.value = True
         time.sleep(sleep_time)
-        GPIO.output(CLK, 0)
+        CLK.value = False
         time.sleep(sleep_time)
 
 
 def _sof():
-    GPIO.output(DAT, 0)
+    DAT.value = False
     for x in range(32):
-        GPIO.output(CLK, 1)
+        CLK.value = True
         time.sleep(sleep_time)
-        GPIO.output(CLK, 0)
+        CLK.value = False
         time.sleep(sleep_time)
 
 
@@ -81,10 +86,8 @@ def show():
     global _gpio_setup
 
     if not _gpio_setup:
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-        GPIO.setup(DAT, GPIO.OUT)
-        GPIO.setup(CLK, GPIO.OUT)
+        DAT.switch_to_output()
+        CLK.switch_to_output()
         atexit.register(_exit)
         _gpio_setup = True
 
